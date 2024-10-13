@@ -37,7 +37,8 @@ dataset = dataset.with_transform(transforms)
 data_collator = DefaultDataCollator()
 
 # Evaluate
-accuracy = evaluate.load("accuracy")
+# accuracy = evaluate.load("accuracy")
+accuracy = evaluate.load("evaluate/metrics/accuracy/accuracy.py")
 
 def compute_metrics(eval_pred):
     predictions, labels = eval_pred
