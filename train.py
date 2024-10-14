@@ -1,83 +1,88 @@
-from datasets import load_dataset
-from transformers import AutoImageProcessor,DefaultDataCollator, AutoModelForImageClassification, TrainingArguments, Trainer
-import evaluate
+import torch
+import torchvision
+import torchvision.transforms as transforms
+import matplotlib.pyplot as plt
 import numpy as np
-from torchvision.transforms import RandomResizedCrop, Compose, Normalize, ToTensor
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 
 
-# Loda datasets
-dataset = load_dataset("imagefolder", data_dir="./datasets/CAPTCHA")
+transform = transforms.Compose(
+    [transforms.ToTensor(),
+     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
-labels = dataset["train"].features["label"].names
-print(labels)
-label2id, id2label = dict(), dict()
-for i, label in enumerate(labels):
-    label2id[label] = str(i)
-    id2label[str(i)] = label
+batch_size = 4
 
-# Preprocess
-checkpoint = "google/vit-base-patch16-224-in21k"
-image_processor = AutoImageProcessor.from_pretrained(checkpoint)
+trainset = torchvision.datasets.ImageFolder(root='./datasets/CAPTCHA/train', transform=transform)
+trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
+                                          shuffle=True, num_workers=2)
 
-normalize = Normalize(mean=image_processor.image_mean, std=image_processor.image_std)
-size = (
-    image_processor.size["shortest_edge"]
-    if "shortest_edge" in image_processor.size
-    else (image_processor.size["height"], image_processor.size["width"])
-)
-_transforms = Compose([RandomResizedCrop(size), ToTensor(), normalize])
+testset = torchvision.datasets.ImageFolder(root='./datasets/CAPTCHA/test', transform=transform)
+testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
+                                         shuffle=False, num_workers=2)
 
-def transforms(examples):
-    examples["pixel_values"] = [_transforms(img.convert("RGB")) for img in examples["image"]]
-    del examples["image"]
-    return examples
+classes = [str(i) for i in range(0, 10)] + [chr(i) for i in range(ord('a'), ord('z') + 1)]
+classes.remove("0")
+classes.remove("1")
+classes.remove("i")
+classes.remove("l")
+classes.remove("o")
 
-dataset = dataset.with_transform(transforms)
+# functions to show an image
+def imshow(img):
+    img = img / 2 + 0.5     # unnormalize
+    npimg = img.numpy()
+    plt.imshow(np.transpose(npimg, (1, 2, 0)))
+    plt.show()
 
-data_collator = DefaultDataCollator()
+class Net(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
 
-# Evaluate
-# accuracy = evaluate.load("accuracy")
-accuracy = evaluate.load("evaluate/metrics/accuracy/accuracy.py")
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = torch.flatten(x, 1) # flatten all dimensions except batch
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
 
-def compute_metrics(eval_pred):
-    predictions, labels = eval_pred
-    predictions = np.argmax(predictions, axis=1)
-    return accuracy.compute(predictions=predictions, references=labels)
+if __name__ == '__main__':
+    net = Net()
 
-# Train
-model = AutoModelForImageClassification.from_pretrained(
-    checkpoint,
-    num_labels=len(labels),
-    id2label=id2label,
-    label2id=label2id,
-)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
-training_args = TrainingArguments(
-    output_dir="captcha_model",
-    remove_unused_columns=False,
-    eval_strategy="epoch",
-    save_strategy="epoch",
-    learning_rate=5e-5,
-    per_device_train_batch_size=16,
-    gradient_accumulation_steps=4,
-    per_device_eval_batch_size=16,
-    num_train_epochs=3,
-    warmup_ratio=0.1,
-    logging_steps=10,
-    load_best_model_at_end=True,
-    metric_for_best_model="accuracy",
-    push_to_hub=True,
-)
+    for epoch in range(2):  # loop over the dataset multiple times
 
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    data_collator=data_collator,
-    train_dataset=dataset["train"],
-    eval_dataset=dataset["test"],
-    tokenizer=image_processor,
-    compute_metrics=compute_metrics,
-)
+        running_loss = 0.0
+        for i, data in enumerate(trainloader, 0):
+            # get the inputs; data is a list of [inputs, labels]
+            inputs, labels = data
 
-trainer.train()
+            # zero the parameter gradients
+            optimizer.zero_grad()
+
+            # forward + backward + optimize
+            outputs = net(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            # print statistics
+            running_loss += loss.item()
+            if i % 2000 == 1999:    # print every 2000 mini-batches
+                print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}')
+                running_loss = 0.0
+
+        print('Finished Training')
+        PATH = './cifar_net.pth'
+        torch.save(net.state_dict(), PATH)
