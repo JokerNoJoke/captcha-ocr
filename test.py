@@ -1,11 +1,8 @@
 import torch
 import torchvision
 import torchvision.transforms as transforms
-import matplotlib.pyplot as plt
-import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
 
 
 transform = transforms.Compose([
@@ -24,7 +21,7 @@ classes.remove("1")
 classes.remove("i")
 classes.remove("l")
 classes.remove("o")
-print(len(classes))
+# print(len(classes))
 
 class Net(nn.Module):
     def __init__(self):
@@ -46,19 +43,26 @@ class Net(nn.Module):
         return x
 
 if __name__ == '__main__':
-    model = Net()
-    model.load_state_dict(torch.load('./cifar_net.pth'))
+    net = Net()
+    net.load_state_dict(torch.load('./cifar_net.pth'))
 
-    model.eval()
+    # prepare to count predictions for each class
+    correct_pred = {classname: 0 for classname in classes}
+    total_pred = {classname: 0 for classname in classes}
 
-    # get some random training images
-    dataiter = iter(testloader)
-    images, labels = next(dataiter)
-    x, y = images[0], labels[0]
-    testloader
+    # again no gradients needed
     with torch.no_grad():
-        # 添加批次维度
-        x_with_batch = x.unsqueeze(0)
-        pred = model(x_with_batch)
-        predicted, actual = classes[pred[0].argmax(0)], classes[y]
-        print(f'Predicted: "{predicted}", Actual: "{actual}"')
+        for data in testloader:
+            images, labels = data
+            outputs = net(images)
+            _, predictions = torch.max(outputs, 1)
+            # collect the correct predictions for each class
+            for label, prediction in zip(labels, predictions):
+                if label == prediction:
+                    correct_pred[classes[label]] += 1
+                total_pred[classes[label]] += 1
+
+    # print accuracy for each class
+    for classname, correct_count in correct_pred.items():
+        accuracy = 100 * float(correct_count) / total_pred[classname]
+        print(f'Accuracy for class: {classname:5s} is {accuracy:.1f} %')

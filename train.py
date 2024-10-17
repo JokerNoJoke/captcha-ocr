@@ -1,8 +1,6 @@
 import torch
 import torchvision
 import torchvision.transforms as transforms
-import matplotlib.pyplot as plt
-import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -18,23 +16,13 @@ batch_size = 4
 trainset = torchvision.datasets.ImageFolder(root='./datasets/CAPTCHA/train', transform=transform)
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=2)
 
-# testset = torchvision.datasets.ImageFolder(root='./datasets/CAPTCHA/test', transform=transform)
-# testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle=True, num_workers=2)
-
 classes = [str(i) for i in range(0, 10)] + [chr(i) for i in range(ord('a'), ord('z') + 1)]
 classes.remove("0")
 classes.remove("1")
 classes.remove("i")
 classes.remove("l")
 classes.remove("o")
-print(len(classes))
-
-# functions to show an image
-def imshow(img):
-    img = img / 2 + 0.5     # unnormalize
-    npimg = img.numpy()
-    plt.imshow(np.transpose(npimg, (1, 2, 0)))
-    plt.show()
+# print(len(classes))
 
 class Net(nn.Module):
     def __init__(self):
@@ -68,7 +56,6 @@ if __name__ == '__main__':
         for i, data in enumerate(trainloader, 0):
             # get the inputs; data is a list of [inputs, labels]
             inputs, labels = data
-            print(inputs.shape)
 
             # zero the parameter gradients
             optimizer.zero_grad()
